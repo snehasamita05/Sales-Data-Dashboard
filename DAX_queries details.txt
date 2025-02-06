@@ -1,0 +1,221 @@
+1)  Total Invoiced Amount YTD vs Total Invoiced Amount Last YTD.
+The Total Invoiced Amount YTD vs Total Invoiced Amount Last YTD compares the total sales (invoiced amount) of the current year up to the selected date (YTD - Year to Date) with the total sales of the same period from the previous year (Last YTD). This metric helps to analyze year-over-year performance, showing whether the invoiced amount has increased or decreased compared to the same timeframe last year.
+
+Total Invoiced Amount Last YTD = 
+CALCULATE(
+    SUMX(
+        Sales,
+        Sales[Net Price] * Sales[Quantity]
+    ),
+    DATESYTD(DATEADD(DateTable[Date], -1, YEAR))
+)
+
+Total Invoiced Amount YTD = 
+CALCULATE(
+    SUMX(
+        Sales,
+        Sales[Net Price] * Sales[Quantity]
+    ),
+    DATESYTD(DateTable[Date])
+)
+---------------------------------------------------------------------------
+2) Total New Customers Till Date 
+Total New Customers Till Date tracks the number of unique customers who made their first purchase up until the current date. This metric helps to understand how many new customers have been acquired over time, providing insights into customer growth and retention efforts.
+CardTitle1 = " Till Date " & ([Selected Date])
+
+Total Customers = 
+IF(
+    ISBLANK(
+        CALCULATE(
+            DISTINCTCOUNT(Sales[CustomerKey]),
+            ALLEXCEPT(Sales, Sales[CustomerKey]),  // Retains only CustomerKey context
+            Sales[Invoice Date] <= MAX(DateTable[Date])  // Ensures filter based on selected date
+        )
+    ),
+    "0",  // Replace blank with "NULL"
+    FORMAT(
+        CALCULATE(
+            DISTINCTCOUNT(Sales[CustomerKey]),
+            ALLEXCEPT(Sales, Sales[CustomerKey]),  // Retains only CustomerKey context
+            Sales[Invoice Date] <= MAX(DateTable[Date])  // Ensures filter based on selected date
+        ),
+        "0"  // Format the result as a number
+    )
+)
+
+----------------------------------------------------------------------------------------------
+3) Total New Customer in a Year
+Total New Customers in a Year represents the number of unique customers who made their first purchase within a specific year. This metric helps track the success of customer acquisition efforts for that particular year and gives insights into the growth of the customer base.
+CardTitle2 = " In Year " & YEAR([Selected Date])
+
+Total Customer in Year = [Total Customers] - ([Total Customers (First Day of Year)]-[New Customers (First Day of Year)])
+
+Total Customers = 
+IF(
+    ISBLANK(
+        CALCULATE(
+            DISTINCTCOUNT(Sales[CustomerKey]),
+            ALLEXCEPT(Sales, Sales[CustomerKey]),  // Retains only CustomerKey context
+            Sales[Invoice Date] <= MAX(DateTable[Date])  // Ensures filter based on selected date
+        )
+    ),
+    "0",  // Replace blank with "NULL"
+    FORMAT(
+        CALCULATE(
+            DISTINCTCOUNT(Sales[CustomerKey]),
+            ALLEXCEPT(Sales, Sales[CustomerKey]),  // Retains only CustomerKey context
+            Sales[Invoice Date] <= MAX(DateTable[Date])  // Ensures filter based on selected date
+        ),
+        "0"  // Format the result as a number
+    )
+)
+Total Customers (First Day of Year) = 
+VAR FirstDayOfYear = DATE(YEAR(MAX(DateTable[Date])), 1, 1)  -- Get the first day of the selected year
+RETURN
+    IF(
+        ISBLANK(
+            CALCULATE(
+                DISTINCTCOUNT(Sales[CustomerKey]),  -- Count distinct customers
+                ALLEXCEPT(Sales, Sales[CustomerKey]),  -- Retain only CustomerKey context
+                Sales[Invoice Date] <= FirstDayOfYear  -- Ensures filter is based on first day of the year
+            )
+        ),
+        "0",  -- Replace blank with "0"
+        FORMAT(
+            CALCULATE(
+                DISTINCTCOUNT(Sales[CustomerKey]),  -- Count distinct customers
+                ALLEXCEPT(Sales, Sales[CustomerKey]),  -- Retain only CustomerKey context
+                Sales[Invoice Date] <= FirstDayOfYear  -- Ensures filter is based on first day of the year
+            ),
+            "0"  -- Format the result as a number
+        )
+    )
+New Customers (First Day of Year) = 
+VAR FirstDayOfYear = DATE(YEAR([Selected Date]), 1, 1)  -- Get the first day of the selected year
+RETURN
+    COUNTROWS(
+        FILTER(
+            Customer,
+            YEAR([First Transaction Date]) = YEAR([Selected Date]) &&  -- Check if the first transaction is in the selected year
+            [First Transaction Date] = FirstDayOfYear  -- Check if the first transaction is on the first day of the selected year
+        )
+    )
+
+------------------------------------------------------------
+4) New Customer On Date
+
+New Customer on Date refers to the count of customers who made their first purchase on a specific date. It highlights the number of customers acquired on that particular day, helping to analyze customer acquisition trends and the impact of marketing or promotional activities on that specific day.
+
+CardTitle = " On Date " & ([Selected Date])
+New Customer Count = 
+IF(
+    ISBLANK([New Customers]), 
+    "0", 
+    FORMAT([New Customers], "0")  // Replace with desired format
+)
+New Customers = 
+COUNTROWS(
+    FILTER(
+        Customer,
+        YEAR([First Transaction Date]) = YEAR([Selected Date]) &&
+        [First Transaction Date] = [Selected Date]
+    )
+)
+
+First Transaction Date = 
+CALCULATE(
+    MIN(Sales[Invoice Date]),
+    FILTER(
+        ALL(Sales),  // Remove filters on the Sales table, but keep the CustomerKey context
+        Sales[CustomerKey] = MAX(Customer[CustomerKey]) &&
+        Sales[Invoice Date] <= SELECTEDVALUE(DateTable[Date])  // Compare with the selected date
+    )
+)
+Selected Date = LASTDATE(DateTable[Date])
+
+-----------------------------------------------------------------------
+5) Top 5 customer
+Top 5 Customers Based on Highest Order Amount refers to the five customers who have made the largest purchases within a specified period. This ranking is typically calculated based on the total order amount, allowing businesses to identify their highest-spending customers.
+
+Order Amount = 
+VAR SelectedDate = MAX(DateTable[Date])
+RETURN
+    CALCULATE(
+        SUMX(Sales, Sales[Net Price] * Sales[Quantity]),  // Multiply Net Price by Quantity
+        Sales[Invoice Date] <= SelectedDate  // Filter by the selected date
+    )
+
+---------------------------------------------------------------------------
+6) Sales growth % by Country
+Sales Growth % by Country measures the percentage change in sales over a specific period, broken down by country. It compares the sales performance of a given period (e.g., month or year) against a previous period, highlighting how each country's sales have increased or decreased.
+
+% Sales Growth YTD = 
+IF(
+    ISBLANK([Total Invoiced Amount Last YTD]),
+    0, -- Default to 0 if the previous year's value is blank
+    DIVIDE(
+        [Total Invoiced Amount YTD] - [Total Invoiced Amount Last YTD], 
+        [Total Invoiced Amount Last YTD]
+    ) * 100
+)
+
+------------------------------------------------------------------------------------
+7) % sales growth YTD with threshold
+% Sales Growth YTD with Threshold represents the percentage change in sales for the year-to-date (YTD) compared to the same period in the previous year. Applying a threshold allows you to visually indicate performance that is above or below a certain benchmark or target.
+% Sales Growth YTD = 
+IF(
+    ISBLANK([Total Invoiced Amount Last YTD]),
+    0, -- Default to 0 if the previous year's value is blank
+    DIVIDE(
+        [Total Invoiced Amount YTD] - [Total Invoiced Amount Last YTD], 
+        [Total Invoiced Amount Last YTD]
+    ) * 100
+)
+
+Threshold Color = 
+IF(
+    [% Sales Growth YTD] > 5, "Green",
+    IF(
+        [% Sales Growth YTD] >= 0, "Yellow",
+        "Red"
+    )
+)
+
+----------------------------------------------------------------------------
+8) Month by Month Comparison
+Month-by-Month Comparison: Actual vs Previous Year of Invoiced Amount shows how the invoiced amount for each month this year compares to the same month in the previous year, helping to track growth, identify trends, and assess performance over time.
+Actual Year Invoiced Amount = 
+SUMX(Sales, Sales[Net Price] * Sales[Quantity])  // Multiply Net Price by Quantity
+
+Previous Year Invoiced = 
+CALCULATE(
+    SUMX(Sales, Sales[Net Price] * Sales[Quantity]),
+    SAMEPERIODLASTYEAR(DateTable[Date])
+)
+
+---------------------------------------------------------------------------
+9) Daily sales report
+Daily Sales Report for Selected Month allows you to compare the ordered amount and invoiced amount on a daily basis within the selected month, providing insights into daily sales performance and identifying any discrepancies between what was ordered and invoiced.
+Ordered Amount = SUMX(Sales, Sales[Unit Price] * Sales[Quantity])
+Invoiced Amount = SUMX(Sales, Sales[Net Price] * Sales[Quantity])
+
+
+-----------------------------------------------------------------
+
+DateTable = CALENDAR(DATE(2019, 1, 1), TODAY())
+Month Name = FORMAT(DateTable[Date], "MMMM")
+Month Number = MONTH(DateTable[Date]) + (YEAR(DateTable[Date]) * 100)
+Month-Year = FORMAT(DateTable[Date], "MM YYYY")
+Year = YEAR(DateTable[Date])
+
+-------------------------------------------------------------------
+
+North America
+[CountryRegion] == "United States" || [CountryRegion] == "Canada"
+
+West Europe
+([CountryRegion] == "France" || [CountryRegion] == "Germany" || [CountryRegion] == "Italy" || [CountryRegion] == "Ireland" || [CountryRegion] == "Portugal" || 
+[CountryRegion] == "Spain" || [CountryRegion] == "Switzerland" || [CountryRegion] == "Netherlands" || [CountryRegion] == "United Kingdom")
+ 
+Asia
+[Continent] == "Asia" || [CountryRegion] == "Russia" || [CountryRegion] == "Greece" || [CountryRegion] == "Poland"
